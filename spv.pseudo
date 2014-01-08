@@ -40,57 +40,113 @@ Transaction to add to SPV chain
 	txhashK is the kth txhash in the list of tx hashes from the bitcoin block
 	txhash1..txhashN should be in the correct order to assemble the relevant merkle tree and root
 	
+
+if tx.fee < requiredfee:
+	stop
+
 # special locations in memory:
 # mc    : state
 # mc-1  : blockindexcount
 # mc-2  : topblock
-	
-if tx.fee < requiredfee:
-	stop
+# mc-3  : topdiff
+BIC = 1
+TB = 2
+TD = 3
+# datastruct for blocks:
+# c.m[hash] = blockheader
+# c.m[hash+1] = index
+# c.m[mc+A*index] = hash
+# c.m[mc+A*index+1] = cumulative diff
+# A = numberOfVariablesForEachBlock, currently 2 (hash, cumulative diff)
+A = 2
 
+# other variables
+DIFFONETARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000	
+	
+blockheader = tx.data[0]
 mc = magicconstant = 2 ^ 255 	# no blockhash will ever be this large with direct pow,
                                 # or if they are it's as good as anywhere else
+
+								
 state = contract.memory[mc]
 if state == 0:
-	contract.memory[mc-1] = 1
-	contract.memory[mc+1] = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
+	i = 1
+	contract.memory[mc-BIC] = 1
+	contract.memory[mc+i*A] = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
+	contract.memory[mc+i*A+1] = 1
 	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f] = 0x01000000 0000000000000000000000000000000000000000000000000000000000000000 3BA3EDFD7A7B12B27AC72C3E67768F617FC81BC3888A51323A9FB8AA4B1E5E4A 29AB5F49 FFFF001D 1DAC2B7C 
 	
 	contract.memory[mc] = 1
 	stop
 	
-# should be 80 bytes long
+# blockheader should be 80 bytes long
 if blockheader.length != 80:
 	stop
 
+def getversion(bh):
+	return bh[:4]
+def getparent(bh):
+	return bh[4:4+32]
+def getmerkleroot(bh):
+	return bh[4+32:4+32+32]
 def gettimestamp(bh):
 	return bh[4+32+32:4+32+32+4]
+def getnbits(bh):
+	return bh[4+32+32+4:4+32+32+4+4]
+def getnonce(bh):
+	return bh[[4+32+32+4+4:80]
+def getblockhash(bh):
+	return sha256(bh)
+def nbitstotarget(nbits):
+	return nbits[1:4] * (2 ^ (8*(nbits[0]-3)))
 	
-blockhash = sha256(blockheader)
-blockparent = blockheader[4:32+4]
-blockmerkleroot = blockheader[4+32:4+32+32]
-blocktimestamp = gettrimestamp(blockheader)
-blocknbits = blockheader[4+32+32+4:4+32+32+4+4]
-blockindexcount = contract.memory[mc-1]
+blockhash = getblockhash(blockheader)
+blockparent = getparent(blockheader)
+blockmerkleroot = getmerkleroot(blockheader)
+blocktimestamp = gettimestamp(blockheader)
+blocknbits = getnbits(blockheader)
+blockindexcount = contract.memory[mc-BIC]
+topblock = contract.memory[mc-TB]
+topdiff = contract.memory[mc-TD]
 
 # check we don't have it
-index = mc + 1
+# count from top to bottom to make it less expensive to add to top of chain
 parentinindex = False
-while index <= blockindexcount + mc:
-	if contract.memory[index] == blockhash:
-		stop
-	if contract.memory[index] == blockparent:
+i = blockindexcount
+while i > 0:
+	currblock = contract.memory[mc+A*i]
+	cbhash = getblockhash(currblock)
+	if cbhash == blockparent:
 		parentinindex = True
-	index += 1
+		break	# we can break here because a block must have its parent to be added.
+		        # this means it will always be after its parent. Since we're searching
+				# from most recent first, we would have found our hash had it been there
+	if cbhash == blockhash:
+		stop
+	i -= 1
 if parentinindex == False:
 	stop
 
 # check difficulty
-nbits = blocknbits
-target = nbits[1:4] * (2 EXP (8*(nbits[0]-3)))
+target = nbitstotarget(blocknbits)
 if blockhash >= target:
 	stop
+diff = DIFFONETARGET / target
+
+# check checkpoints - maybe
+# do this at some point
 
 # add to collection
-contract.memory[mc-1] = blockindexcount += 1
+prevdiff = contract.memory[mc+blockindexcount*A+1]
+blockindexcount += 1
+contract.memory[mc-BIC] = blockindexcount
+contract.memory[mc+blockindexcount*A] = blockhash
+newdiff = diff + prevdiff
+contract.memory[mc+blockindexcount*A+1] = newdiff
 contract.memory[blockhash] = blockheader
+contract.memory[blockhash+1] = blockindexcount
+if newdiff > topdiff:
+	# we have a new topblock
+	contract.memory[mc-TB] = blockhash
+	contract.memory[mc-TD] = newdiff
+

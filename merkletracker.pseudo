@@ -1,0 +1,102 @@
+Merkle Tree Constructor
+
+This works in tandem with SPV to keep a map of transactions to merkle roots.
+
+Each hash is in a pair.
+
+let contract.memory[hash1] = hash2 
+and vice versa.
+
+In the case a hash is the merkle root - so there are no more hashes,
+let contract.memory[hash] = 1
+
+setting merkle roots can only be done by a trusted contract (in this case the chainheaders contract)
+OR
+setting merkle roots requires also providing block hash
+of a block with that merkle root which exists in chainheaders db
+(I favour the last one, cheaper too)
+
+Both of the above transactions are not the common form of TX
+
+Transaction data:
+[opt, data1, data2, data3, ...]
+0: add merkleroot
+1: add/fill in merklebranch
+in the db merkle branch entries have 33 bytes; 1 for left/right and 32 for the hash
+any entries after the first two also must have this l/r byte
+
+#!/usr/bin/ethereum
+
+if tx.datan < 3:
+	stop
+
+if tx.data[0] == 0:
+	# add a merkle root
+	merkleroot = tx.data[1]
+	blockhash = tx.data[2]
+	blockheader = block.contract_memory(CHAINHEADERS, blockhash)
+	if merkleroot == getmerkleroot(blockheader):
+		# success!
+		contract.memory[merkleroot] = 1
+
+elif tx.data[0] == 1:
+	# fill in merkle branch
+	hash1 = tx.data[1]
+	hash2 = tx.data[2]
+	# first verify branch leads to existing entry
+	counter = 2;
+	while contract.memory[hash1] == 0: # all entries have pairs so no need to worry about testing hash2
+		counter += 1
+		hash3 = sha256(hash1 ++ hash2)
+		if tx.datan >= counter:
+			lr = tx.data[counter][0]
+			hash4 = tx.data[counter][1:33]
+		else:
+			pre = contract.memory[hash3]
+			if pre == 0:
+				# fail
+				stop
+			lr = pre[0]
+			hash4 = pre[1:33]
+		if lr == 0:
+			hash1 = hash3
+			hash2 = hash4
+		else:
+			hash1 = hash4
+			hash2 = hash3
+	# make sure that the hash1 and hash2 we ended up with pair correctly
+	if contract.memory[hash2][1:33] != hash1 || contract.memory[hash1][1:33] != hash2:
+		stop # if the hashes we've ended up with aren't paired then quit
+	
+	# sweet, everything is valid so far, lets make some entries!
+	hash1 = tx.data[1]
+	hash2 = tx.data[2]
+	counter = 2;
+	while contract.memory[hash1] == 0:
+		contract.memory[hash1] = 0x00 ++ hash2 # this is concatenation, not addition
+		contract.memory[hash2] = 0x01 ++ hash1
+		counter += 1
+		hash3 = sha256(hash1 ++ hash2)
+		if tx.datan >= counter:
+			lr = tx.data[counter][0]
+			hash4 = tx.data[counter][1:33]
+		if lr == 0:
+			hash1 = hash3
+			hash2 = hash4
+		else:
+			hash1 = hash4
+			hash2 = hash3
+	
+	
+
+
+
+
+
+
+
+
+
+
+
+

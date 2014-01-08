@@ -3,24 +3,7 @@ tx.sender, tx.value, tx.fee, tx.data, tx.datan
 contract.memory, contract.address, contract.creator 
 block.contract_memory, block.addressbalance, block.number, block.difficulty, block.basefee, block.timestamp
 
-General requirements:
-Must start with genesis block.
-Can include checkpoints.
-Each block must have prevblock in the block index (records all blocks, even orphans).
-Orphans must be from within the last month to be added.
-- Perhaps the full merkle tree should be included as well.
-BLOCK HEADER ADD:
-	check PoW aligns with difficulty
-	check prevblock and height = prevblock.height+1
-	check time is okay
-	add to index // list of height, hash pairs
-	add to contract memory for blocks
-CALCULATE BLOCK HASH:
-	take block header
-	apply sha256
-	apply sha256 again
-	// may need to reverse endianness
-	
+
 BLOCKCHECKS:	
 check syntactic correctness
 reject if already exists in index
@@ -32,14 +15,13 @@ check checkpoints if the block is old
 add block to tree
 
 
-
-Transaction to add to SPV chain
+Transaction to add blockheader to SPV chain
 * Form: (C, feemag * block.basefee, [blockheader])
 	where C is the contract defining the header chain
 	feemag is an appropriate value for ethereum rules
-	txhashK is the kth txhash in the list of tx hashes from the bitcoin block
-	txhash1..txhashN should be in the correct order to assemble the relevant merkle tree and root
+	tx.data[0] is the blockheader
 	
+#!/usr/bin/ethereum-script-test
 
 if tx.fee < requiredfee:
 	stop

@@ -1,8 +1,10 @@
+Purpose:
+To maintain a record of the longest chain of *coin blockheaders.
+
 Inputs: 
 tx.sender, tx.value, tx.fee, tx.data, tx.datan 
 contract.memory, contract.address, contract.creator 
 block.contract_memory, block.addressbalance, block.number, block.difficulty, block.basefee, block.timestamp
-
 
 BLOCKCHECKS:	
 check syntactic correctness

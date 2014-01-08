@@ -1,0 +1,96 @@
+Inputs: 
+tx.sender, tx.value, tx.fee, tx.data, tx.datan 
+contract.memory, contract.address, contract.creator 
+block.contract_memory, block.addressbalance, block.number, block.difficulty, block.basefee, block.timestamp
+
+General requirements:
+Must start with genesis block.
+Can include checkpoints.
+Each block must have prevblock in the block index (records all blocks, even orphans).
+Orphans must be from within the last month to be added.
+- Perhaps the full merkle tree should be included as well.
+BLOCK HEADER ADD:
+	check PoW aligns with difficulty
+	check prevblock and height = prevblock.height+1
+	check time is okay
+	add to index // list of height, hash pairs
+	add to contract memory for blocks
+CALCULATE BLOCK HASH:
+	take block header
+	apply sha256
+	apply sha256 again
+	// may need to reverse endianness
+	
+BLOCKCHECKS:	
+check syntactic correctness
+reject if already exists in index
+check block hash against nBits PoW requirement
+check prevblock is in our index (that this block is in a main or side chain)
+reject if timestamp is <= median of the last 11 blocks
+verify nBits difficulty is correct. (matching diff rules)
+check checkpoints if the block is old
+add block to tree
+
+
+
+Transaction to add to SPV chain
+* Form: (C, feemag * block.basefee, [blockheader])
+	where C is the contract defining the header chain
+	feemag is an appropriate value for ethereum rules
+	txhashK is the kth txhash in the list of tx hashes from the bitcoin block
+	txhash1..txhashN should be in the correct order to assemble the relevant merkle tree and root
+	
+# special locations in memory:
+# mc    : state
+# mc-1  : blockindexcount
+# mc-2  : topblock
+	
+if tx.fee < requiredfee:
+	stop
+
+mc = magicconstant = 2 ^ 255 	# no blockhash will ever be this large with direct pow,
+                                # or if they are it's as good as anywhere else
+state = contract.memory[mc]
+if state == 0:
+	contract.memory[mc-1] = 1
+	contract.memory[mc+1] = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
+	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f] = 0x01000000 0000000000000000000000000000000000000000000000000000000000000000 3BA3EDFD7A7B12B27AC72C3E67768F617FC81BC3888A51323A9FB8AA4B1E5E4A 29AB5F49 FFFF001D 1DAC2B7C 
+	
+	contract.memory[mc] = 1
+	stop
+	
+# should be 80 bytes long
+if blockheader.length != 80:
+	stop
+
+def gettimestamp(bh):
+	return bh[4+32+32:4+32+32+4]
+	
+blockhash = sha256(blockheader)
+blockparent = blockheader[4:32+4]
+blockmerkleroot = blockheader[4+32:4+32+32]
+blocktimestamp = gettrimestamp(blockheader)
+blocknbits = blockheader[4+32+32+4:4+32+32+4+4]
+blockindexcount = contract.memory[mc-1]
+
+# check we don't have it
+index = mc + 1
+parentinindex = False
+while index <= blockindexcount + mc:
+	if contract.memory[index] == blockhash:
+		stop
+	if contract.memory[index] == blockparent:
+		parentinindex = True
+	index += 1
+if parentinindex == False:
+	stop
+
+# check difficulty
+nbits = blocknbits
+target = nbits[1:4] * (2 EXP (8*(nbits[0]-3)))
+if blockhash >= target:
+	stop
+
+# add to collection
+contract.memory[mc-1] = blockindexcount += 1
+contract.memory[blockhash] = blockheader

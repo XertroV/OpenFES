@@ -29,21 +29,19 @@ if tx.fee < requiredfee:
 	stop
 
 # special locations in memory:
-# mc    : state
-# mc-1  : blockindexcount
-# mc-2  : topblock
-# mc-3  : topdiff
-BIC = 1
-TB = 2
-TD = 3
+# mc-1  : state
+# mc    : [blockindexcount, topblock, topdiff, topheight]
+BIC = 0
+TB = 1
+TD = 2
+TH = 3
 # datastruct for blocks:
-# c.m[hash] = blockheader
-# c.m[hash+1] = index
-# c.m[hash+2] = height
-# c.m[mc+A*index] = hash
-# c.m[mc+A*index+1] = cumulative diff
-# A = number Of Variables For Each Block In the Index, currently 2 (hash, cumulative diff)
-A = 2
+# c.m[hash] = [blockheader, index, height, cumulative diff]
+BH = 0
+IDX = 1
+HGT = 2
+CD = 3
+# c.m[mc+index] = hash
 
 # other variables
 DIFFONETARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000	
@@ -53,17 +51,15 @@ mc = magicconstant = 2 ^ 255 	# no blockhash will ever be this large with direct
                                 # or if they are it's as good as anywhere else
 
 								
-state = contract.memory[mc]
+state = contract.memory[mc-1]
 if state == 0:
 	i = 1
-	contract.memory[mc-BIC] = 1
-	contract.memory[mc+i*A] = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
-	contract.memory[mc+i*A+1] = 1
-	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f] = 0x01000000 ++ 0x0000000000000000000000000000000000000000000000000000000000000000 ++ 0x3BA3EDFD7A7B12B27AC72C3E67768F617FC81BC3888A51323A9FB8AA4B1E5E4A ++ 0x29AB5F49 ++ 0xFFFF001D ++ 0x1DAC2B7C 
-	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f + 1] = 1
-	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f + 2] = 0
+	contract.memory[mc] = [1, 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f, 1, 1]
+	contract.memory[mc+i] = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
+	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f] = 
+		[0x01000000 ++ 0x0000000000000000000000000000000000000000000000000000000000000000 ++ 0x3BA3EDFD7A7B12B27AC72C3E67768F617FC81BC3888A51323A9FB8AA4B1E5E4A ++ 0x29AB5F49 ++ 0xFFFF001D ++ 0x1DAC2B7C, 1, 0, 1]
 	
-	contract.memory[mc] = 1
+	contract.memory[mc-1] = 1
 	stop
 	
 # blockheader should be 80 bytes long
@@ -92,16 +88,18 @@ blockparent = getparent(blockheader)
 blockmerkleroot = getmerkleroot(blockheader)
 blocktimestamp = gettimestamp(blockheader)
 blocknbits = getnbits(blockheader)
-blockindexcount = contract.memory[mc-BIC]
-topblock = contract.memory[mc-TB]
-topdiff = contract.memory[mc-TD]
+metadata = contract.memory[mc]
+blockindexcount = metadata[BIC]
+topblock = metadata[TB]
+topdiff = metadata[TD]
 
 # check we don't have it
 # count from top to bottom to make it less expensive to add to top of chain
 parentinindex = False
-i = blockindexcount
+/*i = blockindexcount
 while i > 0:
-	currblock = contract.memory[mc+A*i]
+	currdata = contract.memory[mc+i]
+	currblock = currdata[0]
 	cbhash = getblockhash(currblock)
 	if cbhash == blockparent:
 		parentinindex = True
@@ -112,7 +110,14 @@ while i > 0:
 		stop
 	i -= 1
 if parentinindex == False:
-	stop
+	stop*/
+
+parentdata = contract.memory[blockparent]
+if parentdata == 0:
+	stop # parent not in chain so fail
+blockdata = contract.memory[blockhash]
+if blockdata != 0:
+	stop # block already known about
 
 # check difficulty
 target = nbitstotarget(blocknbits)
@@ -124,17 +129,21 @@ diff = DIFFONETARGET / target
 # do this at some point
 
 # add to collection
-prevdiff = contract.memory[mc+blockindexcount*A+1]
-prevheight = contract.memory[blockparent + 2]
+parentdata = contract.memory[blockparent]
+prevdiff = parentdata[CD]
+prevheight = parentdata[HGT]
 blockindexcount += 1
-contract.memory[mc-BIC] = blockindexcount
-contract.memory[mc+blockindexcount*A] = blockhash
-contract.memory[mc+blockindexcount*A+1] = diff + prevdiff
-contract.memory[blockhash] = blockheader
-contract.memory[blockhash + 1] = blockindexcount
-contract.memory[blockhash + 2] = prevheight + 1
+metadata[BIC] = blockindexcount
+contract.memory[mc] = metadata
+contract.memory[mc+blockindexcount] = blockhash
+newdiff = diff + prevdiff
+newheight = prevheight + 1
+blockdata = [blockheader, blockindexcount, newheight, newdiff]
+contract.memory[blockhash] = blockdata
 if newdiff > topdiff:
 	# we have a new topblock
-	contract.memory[mc-TB] = blockhash
-	contract.memory[mc-TD] = newdiff
+	metadata[TB] = blockhash
+	metadata[TD] = newdiff
+	metadata[TH] = newheight
+	contract.memory[mc] = metadata
 

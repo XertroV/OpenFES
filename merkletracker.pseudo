@@ -36,7 +36,7 @@ if tx.data[0] == 0:
 	# add a merkle root
 	merkleroot = tx.data[1]
 	blockhash = tx.data[2]
-	blockheader = block.contract_memory(CHAINHEADERSCONTRACT, blockhash)
+	blockheader = block.contract_memory(CHAINHEADERSCONTRACT, blockhash)[0]
 	if merkleroot == getmerkleroot(blockheader):
 		# success!
 		contract.memory[merkleroot] = 1
@@ -60,31 +60,24 @@ elif tx.data[0] == 1:
 				merkleroot = hash3
 				break
 			elif pre == 0:
-				# failed, not enough user input
+				# failed, not enough user input to confirm branch
 				stop
-			lr = pre[0]
-			hash4 = pre[1:33]
+			merkleroot = pre[2]
+			break
 		if lr == 0:
 			hash1 = hash3
 			hash2 = hash4
 		else:
 			hash1 = hash4
 			hash2 = hash3
-			
-	# make sure that the hash1 and hash2 we ended up with pair correctly
-	## I DON'T THINK THIS NEEDS TO BE DONE ANYMORE
-	if contract.memory[hash2][1:33] != hash1 || contract.memory[hash1][1:33] != hash2:
-		stop # if the hashes we've ended up with aren't paired then quit
 	
 	# sweet, everything is valid so far, lets make some entries!
 	hash1 = tx.data[1]
 	hash2 = tx.data[2]
 	counter = 2;
 	while contract.memory[hash1] == 0:
-		contract.memory[hash1] = 0x00 ++ hash2 # this is concatenation, not addition
-		contract.memory[hash1 + 1] = merkleroot
-		contract.memory[hash2] = 0x01 ++ hash1
-		contract.memory[hash2 + 1] = merkleroot
+		contract.memory[hash1] = [0x00, hash2, merkleroot]
+		contract.memory[hash2] = [0x01, hash1, merkleroot]
 		counter += 1
 		hash3 = sha256(hash1 ++ hash2)
 		if tx.datan > counter:

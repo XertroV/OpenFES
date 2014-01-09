@@ -1,0 +1,31 @@
+SPV Contract
+
+The client will take a transaction hash and a blockhash and set 
+contract.memory[txhash XOR blockhash] = 1 if it is included in the block with
+hash equal to blockhash.
+
+Transaction input:
+[txhash, blockhash]
+
+#!/usr/bin/ethereum
+
+if tx.fee < minfee:
+	stop
+if tx.datan != 2:
+	stop
+
+txhash = tx.data[0]
+blockhash = tx.data[1]
+
+# use merkletracker to get merkle root of txhash
+merkleroottx = block.contract_memory(MERKLETRACKER, txhash + 1)
+if merkleroottx == 0:
+	stop
+# use chainheaders to get merkle root of block
+bh = block.contract_memory(CHAINHEADERS, blockhash)
+merklerootbh = getmerkleroot(bh)
+if merklerootbh != merkleroottx:
+	stop
+	
+# confirmed tx is in merkle root and merkle root in block
+contract.memory[txhash XOR blockhash] = 1

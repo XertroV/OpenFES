@@ -93,25 +93,7 @@ blockindexcount = metadata[BIC]
 topblock = metadata[TB]
 topdiff = metadata[TD]
 
-# check we don't have it
-# count from top to bottom to make it less expensive to add to top of chain
-parentinindex = False
-/*i = blockindexcount
-while i > 0:
-	currdata = contract.memory[mc+i]
-	currblock = currdata[0]
-	cbhash = getblockhash(currblock)
-	if cbhash == blockparent:
-		parentinindex = True
-		break	# we can break here because a block must have its parent to be added.
-		        # this means it will always be after its parent. Since we're searching
-				# from most recent first, we would have found our hash had it been there
-	if cbhash == blockhash:
-		stop
-	i -= 1
-if parentinindex == False:
-	stop*/
-
+# check we don't have it but do have parent
 parentdata = contract.memory[blockparent]
 if parentdata == 0:
 	stop # parent not in chain so fail

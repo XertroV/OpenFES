@@ -29,6 +29,8 @@ any entries after the first two also must have this l/r byte
 
 if tx.datan < 3:
 	stop
+if tx.fee < minfee:
+	stop
 
 if tx.data[0] == 0:
 	# add a merkle root

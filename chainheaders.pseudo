@@ -23,7 +23,7 @@ Transaction to add blockheader to SPV chain
 	feemag is an appropriate value for ethereum rules
 	tx.data[0] is the blockheader
 	
-#!/usr/bin/ethereum-script-test
+#!/usr/bin/ethereum
 
 if tx.fee < requiredfee:
 	stop
@@ -39,9 +39,10 @@ TD = 3
 # datastruct for blocks:
 # c.m[hash] = blockheader
 # c.m[hash+1] = index
+# c.m[hash+2] = height
 # c.m[mc+A*index] = hash
 # c.m[mc+A*index+1] = cumulative diff
-# A = numberOfVariablesForEachBlock, currently 2 (hash, cumulative diff)
+# A = number Of Variables For Each Block In the Index, currently 2 (hash, cumulative diff)
 A = 2
 
 # other variables
@@ -58,7 +59,9 @@ if state == 0:
 	contract.memory[mc-BIC] = 1
 	contract.memory[mc+i*A] = 0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
 	contract.memory[mc+i*A+1] = 1
-	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f] = 0x01000000 0000000000000000000000000000000000000000000000000000000000000000 3BA3EDFD7A7B12B27AC72C3E67768F617FC81BC3888A51323A9FB8AA4B1E5E4A 29AB5F49 FFFF001D 1DAC2B7C 
+	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f] = 0x01000000 ++ 0x0000000000000000000000000000000000000000000000000000000000000000 ++ 0x3BA3EDFD7A7B12B27AC72C3E67768F617FC81BC3888A51323A9FB8AA4B1E5E4A ++ 0x29AB5F49 ++ 0xFFFF001D ++ 0x1DAC2B7C 
+	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f + 1] = 1
+	contract.memory[0x000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f + 2] = 0
 	
 	contract.memory[mc] = 1
 	stop
@@ -122,13 +125,14 @@ diff = DIFFONETARGET / target
 
 # add to collection
 prevdiff = contract.memory[mc+blockindexcount*A+1]
+prevheight = contract.memory[blockparent + 2]
 blockindexcount += 1
 contract.memory[mc-BIC] = blockindexcount
 contract.memory[mc+blockindexcount*A] = blockhash
-newdiff = diff + prevdiff
-contract.memory[mc+blockindexcount*A+1] = newdiff
+contract.memory[mc+blockindexcount*A+1] = diff + prevdiff
 contract.memory[blockhash] = blockheader
-contract.memory[blockhash+1] = blockindexcount
+contract.memory[blockhash + 1] = blockindexcount
+contract.memory[blockhash + 2] = prevheight + 1
 if newdiff > topdiff:
 	# we have a new topblock
 	contract.memory[mc-TB] = blockhash

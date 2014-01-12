@@ -85,11 +85,11 @@ TODO: Prove Alt Payment:
 TODO: Construct order
 	
 	Sell ALT:
-	(MARKETCOIN, somefee, [0, min_return, required_output, max_curr])
+	(MARKETCOIN, somefee, [0, min_return, required_output, chain_entry, max_curr])
 		value = pledge
 		
 	Sell ETR:
-	(MARKETCOIN, somefee, [1, min_return, required_output])
+	(MARKETCOIN, somefee, [1, min_return, required_output, chain_entry])
 		value = total order
 		
 	Prove Alt Payment:

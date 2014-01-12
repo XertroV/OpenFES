@@ -93,12 +93,12 @@ TODO: Construct order
 		value = total order
 		
 	Prove Alt Payment:
-	(MARKETCOIN, somefee, [2, orderhash, alt_transaction, blockhash])
+	(MARKETCOIN, somefee, [2, ordermatch_index, alt_transaction, blockhash])
 		
 	Cancel Order:
-	(MARKETCOIN, somefee, [3, orderhash])
+	(MARKETCOIN, somefee, [3, orderhash, prev_orderhash])
 	
 	Push Pledge:
-	(MARKETCOIN, somefee, [4, orderhash])
+	(MARKETCOIN, somefee, [4, ordermatch_index])
 		
 	

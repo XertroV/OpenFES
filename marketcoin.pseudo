@@ -72,10 +72,39 @@ TX_REQ_OUT = 2
 TX_CHAIN_ENTRY = 3
 TX_MAX_CURR = 4
 
+OM_REQ_ALT_OUT = 0
+OM_SUCCESS_OUT = 1
+OM_FAIL_OUT = 2
+OM_TRADE_ALT_VAL = 3
+OM_TRADE_ETR_VAL = 4
+OM_PLEDGE = 5
+
 def calcOrderHash(ord):
 	# this is arbitrary, but needs to be 1:1 and easily calculable.
 	# it probably will change, and is just a conglomeration of everything for the moment.
 	return SHA3(ord)
+	
+def calcAltTxHash(tx):
+	return SHA256(tx)
+	
+def getVarInt(scratchpad):	
+	varint = scratchpad[:1]
+	if varint <= 0xfc:
+		scratchpad = scratchpad[1:]
+		return varint
+	elif varint == 0xfd:
+		varint = scratchpad[:2]
+	elif varint == 0xfe:
+		varint = scratchpad[:4]
+	elif varint == 0xff:
+		varint = scratchpad[:8]
+	scratchpad = scratchpad[len(varint) + 1:]
+	return varint
+	
+def dumpBytes(scratchpad, bytes):
+	toret = scratchpad[:bytes]
+	scratchpad = scratchpad[bytes:]
+	return toret
 	
 def evaluateMarket():
 	# run market for previous round
@@ -98,13 +127,23 @@ def evaluateMarket():
 		
 		set_rate = (alt_ord.rate + etr_ord.rate) / 2
 		trade_etr_val = min(alt_ord[ALT]/set_rate, etr_ord[ETR])
-		etr_ord[ETR] -= trade_val
+		etr_ord[ETR] -= trade_etr_val
 		trade_alt_val = trade_etr_val * set_rate
+		pledge_cut = trade_alt_val / alt_ord[ALT] * pledge_cut
 		alt_ord[ALT] -= trade_alt_val
-		ordermatch = [required_output, desired_output, trade_alt_val]
+		
+		req_alt_output = etr_ord[OUTPUT] # specified in etr order, for alt network
+		success_output = alt_ord[OUTPUT] # specified in alt order, for etr network
+		fail_output = etr_ord[SENDER] # return all to sender of etr if tx fails
+		
+		# ALTER THIS LINE TO ALTER ORDERMATCH SCHEMA
+		ordermatch = [req_alt_output, success_output, fail_output, trade_alt_val, trade_etr_val, pledge_cut, block.number]
 		ordermatch_list.append(ordermatch)
 		
+		# check if any orders are completely full
 		if alt_ord[ALT] == 0: # not doing `<=` so we can see when and why it breaks
+			last_complete = ALT
+			# if there are no more orders break
 			if alt_ord[NEXT_ORDER] == 0:
 				new_alt_top = 0
 				break # end of orderbook
@@ -112,15 +151,14 @@ def evaluateMarket():
 			new_alt_top = alt_ord[NEXT_ORDER]
 			alt_ord = contract.memory[alt_ord[NEXT_ORDER]]
 			# cleanup? del contract.memory[to_del]
-			last_complete = ALT
 			
 		if etr_ord[ETR] == 0:
+			last_complete = ETR
 			if etr_ord[NEXT_ORDER] == 0:
 				new_etr_top = 0
 				break # End of orderbook
 			new_etr_top = etr_ord[NEXT_ORDER]
 			etr_ord = contract.memory[etr_ord[NEXT_ORDER]]
-			last_complete = ETR
 			
 	# record ordermatch_list
 	state = len(ordermatch_list)
@@ -211,7 +249,8 @@ if tx.data[0] == ALT or tx.data[0] == ETR:
 	# exact val is set to 0 currently. In the future it can designate a non-zero exact value to buy in ALT
 	# this allows for cross chain payments but needs a little more work.
 	this_ord = [alt, etr, next_ord_hash, rate, req_output, 0, tx.sender, fl, pledge]
-	orderhash = calcOrderHash(this_ord)
+	orderhash = calcOrderHash(this_ord) # I am aware as the market evaluates this does not update if the 
+										# order is updated. This is irrelevant; we just want a unique id
 		
 	# alter prev_ord to modify orderbook
 	if prev_ord_hash != 0:
@@ -222,9 +261,93 @@ if tx.data[0] == ALT or tx.data[0] == ETR:
 	
 elif tx.data[0] == 2:
 	# proof of payment
+	ordermatch_index = tx.data[1]
+	alt_tx = tx.data[2]
+	alt_tx_hash = calcAltTxHash(alt_tx)
+	blockhash = tx.data[3]
+	
+	# get what the output should be
+	ordermatch = contract.memory[ordermatch_index]
+	expected_value = ordermatch[OM_TRADE_ALT_VAL]
+	expected_out = ordermatch[OM_REQ_ALT_OUT]
+	
+	# verify output
+	scratchpad = tx[4:] # ignore version
+	numinputs = getVarInt(scratchpad)
+	
+	# loop through and drop inputs
+	i = 0
+	while i < numinputs:
+		i += 1;
+		scratchpad = scratchpad[36:] # drop prevtx and txout index
+		script_len = getVarInt(scratchpad)
+		scratchpad = scratchpad[script_len+4:] # drop script and sequence_no
+	
+	# loop through outputs
+	numoutputs = getVarInt(scratchpad)
+		
+	i = 0
+	verified_output = False
+	while i < numoutputs:
+		i += 1
+		check_output = False
+		value = dumpBytes(scratchpad, 8)
+		if value == expected_value:
+			check_output = True
+		output_len = getVarInt(scratchpad)
+		output = dumpBytes(scratchpad, output_len)
+		if check_output == True:
+			if output == expected_output:
+				verified_output = True
+				break
+	
+	if verified_output == False:
+		stop
+	
+	# access SPV client and check tx exists
+	if block.contract_memory(SPV,alt_tx_hash) == 0:
+		stop
+		
+	totalValue = ordermatch[OM_TRADE_ETR_VAL] + ordermatch[OM_PLEDGE]
+		
+	# release funds to buyer of ETR
+	make_transaction(value, ordermatch[OM_SUCCESS_OUT], [])
 	
 elif tx.data[0] == 3:
 	# cancel order
+	orderhash = tx.data[1]
+	prev_orderhash = tx.data[2]
+	
+	# verify sender
+	order = contract.memory[orderhash]
+	if tx.sender != order[SENDER]:
+		stop
+	
+	# verify prev_order[NEXT_ORDER] points to orderhash
+	prev_order = contract.memory[prev_orderhash]
+	if prev_order[NEXT_ORDER] != orderhash:
+		stop
+	
+	# point prev_order to order[NEXT_ORDER]
+	prev_order[NEXT_ORDER] = order[NEXT_ORDER]
+	contract.memory[prev_orderhash] = prev_order
+	# done
+	
+elif tx.data[0] == 4:
+	# push pledge
+	ordermatch_index = tx.data[1]
+	ordermatch = contract.memory[ordermatch_index]
+	included_in = ordermatch[OM_BLOCK_NUM]
+	current = block.number
+	if 60*24 + included_in > current:
+		stop # current is before timeout
+	
+	# we can allow seller of ETR to claim pledge
+	total_value = ordermatch[OM_PLEDGE] + ordermatch[OM_TRADE_ETR_VAL]
+	make_transaction(total_value, ordermatch[OM_FAIL_OUT], [])
+	
+else:
+	stop
 
 
 

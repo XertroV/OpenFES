@@ -3,7 +3,9 @@
 ## Intro
 
 This is a really rough documentation of `MARKETCOIN` - the contract that will form
-the first distributed factum exchange (though let's not count chickens).
+the first distributed [factum exchange](https://xk.io/wp/FactumExchange.md)
+(though we shouldn't count our chickens). Don't 
+worry about what I mean by factum at this stage.
 
 `MARKETCOIN` enables users to trade on an automatic, fee free (virtually), peer to peer
 exchange which deals in real money. Furthermore, the system is capable of expanding to 
@@ -12,10 +14,30 @@ cross-chain awareness (read: your block headers are showing). This enables SPV v
 internally and - at the cost of a slight dependence on the foreign chain - inter-network
 conditionals.
 
-While this dependence will be judged to unacceptably weaken the security of a network 
+While this dependence will be judged to unacceptably weaken the security of some networks 
 (such as Bitcoin), some other currencies (especially smaller ones where the security risk 
 is negligible) might find it worth the effort. The beauty is `MARKETCOIN` doesn't need
-a network's consent to trade on it.
+a network's consent to trade with it, and is completely transparent.
+
+## OpenFES
+
+OpenFES stands for the Open Factum Exchange Standard, which aims to become a standard by 
+which blockchains interact to enable trustless exchange without deferring value to a token
+as is done with many contemporary exchanges.
+
+## Marketcoin History
+
+Marketcoin was originally going to be a full blown cryptocurrency that was probably a little
+ambitious. For posterity the original 'whitepaper' is located [here](https://github.com/XertroV/MarketcoinWhitepaper).
+
+## Contracts
+
+The following contracts are required:
+
+* [`CHAINHEADERS`](chainheaders.pseudo)
+* [`MERKLETRACKER`](merkletracker.pseudo)
+* [`SPV`](spv.pseudo)
+* [`MARKETCOIN`](marketcoin.pseudo)
 
 ## SPV
 
@@ -76,13 +98,18 @@ Construct merkle branch proof
 	contract knows about mklrt already (added previously). If hash4 were also known  then only hashes
 	1, 2 and 3 are needed.
 
-TODO: Prove Alt Payment:
+Prove Alt Payment:
 
 	(MARKETCOIN, somefee, [2, orderhash, alt_transaction, blockhash])
 	
 ## Market
-	
-TODO: Construct order
+
+The market is structured slightly differently to most. This is because it is designed to be efficient
+for the average person, not traders; it is because there are no spreads and almost no fees; it is
+because it becomes equitable and helps remove the notion that price is without error.
+
+Currently `MARKETCOIN` supports ignorant asymmetric exchange only. At a later time more complex
+and elegant markets will be built.
 	
 	Sell ALT:
 	(MARKETCOIN, somefee, [0, min_return, required_output, chain_entry, max_curr])
@@ -101,4 +128,5 @@ TODO: Construct order
 	Push Pledge:
 	(MARKETCOIN, somefee, [4, ordermatch_index])
 		
-	
+The market is described in some detail in the old [Marketcoin Whitepaper](https://github.com/XertroV/MarketcoinWhitepaper).
+

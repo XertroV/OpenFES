@@ -45,91 +45,174 @@ new orders in block has one linked list in middle.
 
 /* temp copypaste */
 	Sell ALT:
-	(MARKETCOIN, somefee, [0, min_return, max_curr, required_output])
+	(MARKETCOIN, somefee, [0, min_return, required_output, chain_entry, max_curr])
 		value = pledge
 		
 	Sell ETR:
-	(MARKETCOIN, somefee, [1, min_return, required_output])
+	(MARKETCOIN, somefee, [1, min_return, required_output, chain_entry])
 		value = total order
 /* end */
 
 #! /usr/bin/ethereum
+
+ALT = 0
+ETR = 1
+NEXT_ORDER = 2
+RATE = 3
+OUTPUT = 4
+EXACT_VAL = 5
+SENDER = 6
+
+TX_CURR = 0
+TX_MIN_RET = 1
+TX_REQ_OUT = 2
+TX_CHAIN_ENTRY = 3
+TX_MAX_CURR = 4
+
+def calcOrderHash(ord):
+	# this is arbitrary, but needs to be 1:1 and easily calculable.
+	# it probably will change, and is just a conglomeration of everything for the moment.
+	return SHA3(ord)
+	
+def evaluateMarket():
+	# run market for previous round
+	alt_top_hash = contract.memory[ALT]
+	etr_top_hash = contract.memory[ETR]
+	
+	if alt_top_hash == 0 or etr_top_hash == 0:
+		stop
+	
+	alt_ord = contract.memory[alt_top_hash]
+	etr_ord = contract.memory[etr_top_hash]
+	
+	last_complete = 0
+	have_traded = False
+	
+	ordermatch_list = []
+	
+	while alt_ord.rate <= etr_ord.rate:
+		have_traded = True
+		
+		set_rate = (alt_ord.rate + etr_ord.rate) / 2
+		trade_etr_val = min(alt_ord[ALT]/set_rate, etr_ord[ETR])
+		etr_ord[ETR] -= trade_val
+		trade_alt_val = trade_etr_val * set_rate
+		alt_ord[ALT] -= trade_alt_val
+		ordermatch = [required_output, desired_output, trade_alt_val]
+		ordermatch_list.append(ordermatch)
+		
+		if alt_ord[ALT] == 0: # not doing `<=` so we can see when and why it breaks
+			if alt_ord[NEXT_ORDER] == 0:
+				new_alt_top = 0
+				break # end of orderbook
+			# cleanup? to_del = new_alt_top
+			new_alt_top = alt_ord[NEXT_ORDER]
+			alt_ord = contract.memory[alt_ord[NEXT_ORDER]]
+			# cleanup? del contract.memory[to_del]
+			last_complete = ALT
+			
+		if etr_ord[ETR] == 0:
+			if etr_ord[NEXT_ORDER] == 0:
+				new_etr_top = 0
+				break # End of orderbook
+			new_etr_top = etr_ord[NEXT_ORDER]
+			etr_ord = contract.memory[etr_ord[NEXT_ORDER]]
+			last_complete = ETR
+			
+	# record ordermatch_list
+	state = len(ordermatch_list)
+	contract.memory[block.prevblock.hash] = state
+	
+	int i = 0;
+	len_om = len(ordermatch_list)
+	while i < len_om:
+		contract.memory[block.prevblock.hash + i + 1] = ordermatch_list[i]
+		i += 1;
+		
+	# calculate change order
+	if last_complete == ALT:
+		# create new trade and commit
+		orderhash = calcOrderHash(etr_ord)
+		new_etr_top = orderhash
+		contract.memory[orderhash] = etr_ord
+	elif last_complete = ETR:
+		orderhash = calcOrderHash(alt_ord)
+		new_alt_top = orderhash
+		contract.memory[orderhash] = alt_ord
+	
+	contract.memory[ALT] = new_alt_top
+	contract.memory[ETR] = new_etr_top
 
 if tx.fee < minfee:
 	stop
 if tx.datan < 2:
 	stop
 	
-ALT = 0
-ETR = 1
-NEXT_ORDER = 2
-RATE = 3
 	
-if tx.data[0] == ALT or tx.data[0] == ETR:
-	# order prep
-	min_return = tx.data[1]
-	req_output = tx.data[2]
-	
+if tx.data[0] == ALT or tx.data[0] == ETR:	
 	# check if first order for this block (state)
 	# if so execute market
 	# afterwards add to list of orders and orderbook
-
 	
 	state = contract.memory[block.prevblock.hash]
 	if state == 0:
-		# run market for previous round
-		alt_top_hash = contract.memory[ALT]
-		etr_top_hash = contract.memory[ETR]
 		
-		if alt_top_hash == 0 or etr_top_hash == 0:
+		# done with market - NO VARIABLES COMMON TO SECTION BELOW
+	
+	# back to submitting an order
+	
+	# order prep
+	min_return = tx.data[TX_MIN_RET]
+	req_output = tx.data[TX_REQ_OUT]
+	if tx.data[0] == ETR:
+		etr = tx.value
+		alt = min_return
+	else:
+		alt = tx.data[3]
+		etr = min_return
+	rate = alt / etr
+	
+	# ALT : [r:5] -> [r:4.9] -> [r:4.8]
+	# ETR : [r:4] -> * -> [r:4.2] -> [r:4.8]
+	
+	
+	# check entry point is good
+	prev_ord_hash = tx.data[TX_CHAIN_ENTRY]
+	if prev_ord_hash != 0: # we are not at the start of the orderbook
+		prev_ord = contract.memory[prev_ord_hash]
+		# condition: ensure rate is no better than than prev_ord's.
+		if not((tx.data[TX_CURR] == ALT and prev_ord[RATE] >= rate) or (tx.data[TX_CURR] == ETR and prev_ord[RATE] <= rate)):
+			stop
+		next_ord_hash = prev_ord[NEXT_ORDER]
+	else:
+		next_ord_hash = contract.memory[tx.data[TX_CURR]]
+	if next_ord_hash != 0: # not at end of orderbook
+		next_ord = contract.memory[next_ord_hash]
+		# condition, make sure next order is worse than this offer ( this means you have added yourself to the end of the queue)
+		if not ((tx.data[TX_CURR] == ALT and next_ord[RATE] < rate) or (tx.data[TX_CURR] == ETR and next_ord[RATE] > rate)):
 			stop
 		
-		alt_ord = contract.memory[alt_top_hash]
-		etr_ord = contract.memory[etr_top_hash]
+	this_ord = [alt, etr, next_ord_hash, rate, req_output, 0, tx.sender]
+	orderhash = calcOrderHash(this_ord)
 		
-		
-		payment_inst_list = []
-		
-		while alt_ord.rate <= etr_ord.rate:
-			set_rate = (alt_ord.rate + etr_ord.rate) / 2
-			trade_etr_val = min(alt_ord[ALT]/set_rate, etr_ord[ETR])
-			etr_ord[ETR] -= trade_val
-			trade_alt_val = trade_etr_val * set_rate
-			alt_ord[ALT] -= trade_alt_val
-			payment_inst = [required_output, desired_output, trade_alt_val]
-			payment_inst_list.append(payment_inst)
-			
-			if alt_ord[ALT] == 0: # not doing `<=` so we can see when and why it breaks
-				if alt_ord[NEXT_ORDER] == 0:
-					new_alt_top = 0
-					break # end of orderbook
-				# cleanup? to_del = new_alt_top
-				alt_ord = contract.memory[alt_ord[NEXT_ORDER]]
-				new_alt_top = alt_ord[NEXT_ORDER]
-				# cleanup? del contract.memory[to_del]
-				
-			if eth_ord[ETR] == 0:
-				if etr_ord[NEXT_ORDER] == 0:
-					new_etr_top = 0
-					break # End of orderbook
-				eth_ord = contract.memory[eth_ord[NEXT_ORDER]]
-				new_etr_top = etr_ord[NEXT_ORDER]
-	
-	# this is arbitrary, but needs to be 1:1 and easily calculable.
-	# it probably will change, and is just a conglomeration of everything for the moment.
-	orderhash = SHA3(tx.sender ++ tx.data[0] ++ max_rate ++ req_output ++ tx.value ++ block.prevblock.hash)
+	# alter prev_ord
+	if prev_ord_hash != 0:
+		prev_ord[NEXT_ORDER] = orderhash
+		contract.memory[prev_ord_hash] = prev_ord
+	else:
+		contract.memory[tx.data[TX_CURR]] = orderhash
 	
 	if tx.data[0] == ALT:
-		max_curr = tx.data[3]
-		# pledge goes to bank
-		
+		# validate and store pledge
 		pledge = tx.value
 		# Find the worst deal possible for the seller of ALT. Take the difference of the maxima and 
 		# minima of the exchange rates over the last 24hrs.
 		# That magnitude is the pledge because it is the most the buyer could lose due to the seller's
 		# incompetence or malice. Typically only a few percent. This is returned when they prove
 		# payment.
-		TODO: check pledge okay
+		# TODO: check pledge okay
+		
+		
 		
 	else: # ETR
 		max_curr = tx.value

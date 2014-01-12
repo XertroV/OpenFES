@@ -98,7 +98,7 @@ TODO: Construct order
 	Cancel Order:
 	(MARKETCOIN, somefee, [3, orderhash])
 	
-	Claim Pledge:
+	Push Pledge:
 	(MARKETCOIN, somefee, [4, orderhash])
 		
 	

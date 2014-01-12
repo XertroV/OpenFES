@@ -1,0 +1,149 @@
+Marketcoin Design (not a separate coin, just the name)
+Ignorant Asymmetric
+
+Attempt 1
+
+Market should accept orders (tx.data[0] = 0,1)
+if first order it should execute last block and publish payment requirements
+else add order to block order list in middle of block [2^256 / 2]
+
+
+Market also accepts proof of payment (tx.data[0] = 2)
+arguments: reference to orderhash, transaction
+
+Cancellation of order (tx.data[0] = 2)
+remove from orderbook, provide order id
+
+Market should discern between the first order for this block and subsequent orders.
+It should discriminate by making the first order in the block execute the last round of orders.
+use prev_block as a state variable
+
+note: block.prevblock.hash is used as an index below.
+This is not because it need have anything to do with prevblock, but simply because there is a
+bijection between block.prevblock.hash and the blockchain as a whole. This allows us to store
+state variables.
+
+Data Structure:
+contract.memory[block.prevblock.hash] = number of orders (0 for none)
+contract.memory[block.prevblock.hash + n] = nth order for block
+bottom = 0
+top = 2^256 - 1
+
+contract.memory[top] = number of orders in book
+contract.memory[top - n] = nth order in book
+contract.memory[n] = nth order in block (block and book orders are mutually exclusive)
+
+at the beginning of each round the orders are updated in the orderbook
+
+
+
+order book has dual linked lists; one at top and one at bottom.
+new orders in block has one linked list in middle.
+# why do we want to list the new orders in the block?
+# so we can see and compare to what's been submitted!
+# also allows for easy searching later (the application will use this)
+
+/* temp copypaste */
+	Sell ALT:
+	(MARKETCOIN, somefee, [0, min_return, max_curr, required_output])
+		value = pledge
+		
+	Sell ETR:
+	(MARKETCOIN, somefee, [1, min_return, required_output])
+		value = total order
+/* end */
+
+#! /usr/bin/ethereum
+
+if tx.fee < minfee:
+	stop
+if tx.datan < 2:
+	stop
+	
+ALT = 0
+ETR = 1
+NEXT_ORDER = 2
+RATE = 3
+	
+if tx.data[0] == ALT or tx.data[0] == ETR:
+	# order prep
+	min_return = tx.data[1]
+	req_output = tx.data[2]
+	
+	# check if first order for this block (state)
+	# if so execute market
+	# afterwards add to list of orders and orderbook
+
+	
+	state = contract.memory[block.prevblock.hash]
+	if state == 0:
+		# run market for previous round
+		alt_top_hash = contract.memory[ALT]
+		etr_top_hash = contract.memory[ETR]
+		
+		if alt_top_hash == 0 or etr_top_hash == 0:
+			stop
+		
+		alt_ord = contract.memory[alt_top_hash]
+		etr_ord = contract.memory[etr_top_hash]
+		
+		
+		payment_inst_list = []
+		
+		while alt_ord.rate <= etr_ord.rate:
+			set_rate = (alt_ord.rate + etr_ord.rate) / 2
+			trade_etr_val = min(alt_ord[ALT]/set_rate, etr_ord[ETR])
+			etr_ord[ETR] -= trade_val
+			trade_alt_val = trade_etr_val * set_rate
+			alt_ord[ALT] -= trade_alt_val
+			payment_inst = [required_output, desired_output, trade_alt_val]
+			payment_inst_list.append(payment_inst)
+			
+			if alt_ord[ALT] == 0: # not doing `<=` so we can see when and why it breaks
+				if alt_ord[NEXT_ORDER] == 0:
+					new_alt_top = 0
+					break # end of orderbook
+				# cleanup? to_del = new_alt_top
+				alt_ord = contract.memory[alt_ord[NEXT_ORDER]]
+				new_alt_top = alt_ord[NEXT_ORDER]
+				# cleanup? del contract.memory[to_del]
+				
+			if eth_ord[ETR] == 0:
+				if etr_ord[NEXT_ORDER] == 0:
+					new_etr_top = 0
+					break # End of orderbook
+				eth_ord = contract.memory[eth_ord[NEXT_ORDER]]
+				new_etr_top = etr_ord[NEXT_ORDER]
+	
+	# this is arbitrary, but needs to be 1:1 and easily calculable.
+	# it probably will change, and is just a conglomeration of everything for the moment.
+	orderhash = SHA3(tx.sender ++ tx.data[0] ++ max_rate ++ req_output ++ tx.value ++ block.prevblock.hash)
+	
+	if tx.data[0] == ALT:
+		max_curr = tx.data[3]
+		# pledge goes to bank
+		
+		pledge = tx.value
+		# Find the worst deal possible for the seller of ALT. Take the difference of the maxima and 
+		# minima of the exchange rates over the last 24hrs.
+		# That magnitude is the pledge because it is the most the buyer could lose due to the seller's
+		# incompetence or malice. Typically only a few percent. This is returned when they prove
+		# payment.
+		TODO: check pledge okay
+		
+	else: # ETR
+		max_curr = tx.value
+	
+	
+	
+elif tx.data[0] == 2:
+	# proof of payment
+	
+	
+elif tx.data[0] == 3:
+	# cancel order
+
+
+
+
+

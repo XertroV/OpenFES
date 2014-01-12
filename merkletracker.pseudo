@@ -36,7 +36,7 @@ if tx.data[0] == 0:
 	# add a merkle root
 	merkleroot = tx.data[1]
 	blockhash = tx.data[2]
-	blockheader = block.contract_memory(CHAINHEADERSCONTRACT, blockhash)[0]
+	blockheader = block.contract_memory(CHAINHEADERS, blockhash)[0]
 	if merkleroot == getmerkleroot(blockheader):
 		# success!
 		contract.memory[merkleroot] = 1
